@@ -1,5 +1,5 @@
 // 오프라인 지원: 게임 파일을 캐시해 두고, 네트워크가 되면 최신 파일로 갱신
-const CACHE = 'subway-quiz-v2';
+const CACHE = 'subway-quiz-v3';
 const FILES = [
   './',
   './index.html',

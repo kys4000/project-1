@@ -30,19 +30,32 @@
   }).join('');
 
   // ---------- 노선 도우미 ----------
-  const lineById = Object.fromEntries(LINES.map((l) => [l.id, l]));
   // 순환선 첫 구간은 마지막 중복 역 제거
   const segOf = (line, i) => (line.circular && i === 0 ? line.segments[0].slice(0, -1) : line.segments[i]);
   const stationsOf = (line) => [...new Set(line.segments.flat())];
+  function setLineColor(el, line, prop = '--c') { el.style.setProperty(prop, line.color); }
 
-  function setLineColor(el, line) { el.style.setProperty('--c', line.color); }
+  // ---------- 환승역 목록 만들기 ----------
+  // 노선마다 표기가 다른 같은 역은 하나로 묶음
+  const SAME_STATION = { '총신대입구(이수)': '이수' };
+  const canon = (s) => SAME_STATION[s] || s;
+
+  const TRANSFER_PAIRS = [];
+  for (let i = 0; i < LINES.length; i++) {
+    for (let j = i + 1; j < LINES.length; j++) {
+      const a = LINES[i], b = LINES[j];
+      const bSet = new Set(stationsOf(b).map(canon));
+      const shared = stationsOf(a).filter((s) => bSet.has(canon(s)));
+      if (shared.length) TRANSFER_PAIRS.push({ a, b, shared });
+    }
+  }
 
   // ---------- 화면 전환 ----------
   function show(id) {
     $$('.screen').forEach((s) => s.classList.toggle('hidden', s.id !== id));
     window.scrollTo(0, 0);
   }
-  $$('[data-home]').forEach((b) => b.addEventListener('click', () => { stopTimer(); renderHome(); show('home'); }));
+  $$('[data-home]').forEach((b) => b.addEventListener('click', () => { renderHome(); show('home'); }));
 
   // ---------- 홈 ----------
   let quizLines = new Set(store.get('quizLines', LINES.map((l) => l.id)));
@@ -68,23 +81,10 @@
 
     $$('.seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.answer === answerMode));
 
-    const best = store.get('bestQuiz', null);
-    $('#best-quiz').textContent = best != null ? `최고 점수 ${best}점` : '';
-
-    const grid = $('#conquer-lines');
-    grid.innerHTML = '';
-    LINES.forEach((line) => {
-      const total = stationsOf(line).length;
-      const best = store.get('bestConquer:' + line.id, 0);
-      const b = document.createElement('button');
-      b.className = 'line-card';
-      setLineColor(b, line);
-      b.style.setProperty('--p', best / total);
-      b.innerHTML = `<span class="line-badge">${line.id}</span>
-        <span><b>${line.name}</b><small>${total}개 역 · <span class="best-mini">${best ? `최고 ${best}/${total}` : '도전 전'}</span></small></span>`;
-      b.addEventListener('click', () => startConquer(line));
-      grid.appendChild(b);
-    });
+    const bestBlank = store.get('bestQuiz', null);
+    $('#best-quiz').textContent = bestBlank != null ? `최고 점수 ${bestBlank}점` : '';
+    const bestTransfer = store.get('bestTransfer', null);
+    $('#best-transfer').textContent = bestTransfer != null ? `최고 점수 ${bestTransfer}점` : '';
   }
 
   $$('.seg-btn').forEach((b) => b.addEventListener('click', () => {
@@ -93,11 +93,14 @@
     renderHome();
   }));
 
-  // ---------- 빈칸 퀴즈 ----------
+  // ---------- 퀴즈 공통 ----------
+  // mode: 'blank'(빈칸 퀴즈) | 'transfer'(환승역 퀴즈)
   const ROUNDS = 10;
-  const quiz = { round: 0, score: 0, q: null, hinted: false, answered: false, used: new Set(), log: [] };
+  const quiz = { mode: 'blank', round: 0, score: 0, q: null, hinted: false, answered: false, used: new Set(), log: [] };
+  const usesTyping = () => quiz.mode === 'blank' && answerMode === 'type';
 
-  function makeQuestion() {
+  // 빈칸 퀴즈 문제: 앞뒤 역을 보고 가운데 역 맞히기
+  function makeBlankQuestion() {
     const pool = LINES.filter((l) => quizLines.has(l.id));
     for (let tries = 0; tries < 100; tries++) {
       const line = pool[rand(pool.length)];
@@ -113,30 +116,52 @@
       const at = (k) => (circ ? seg[((k % n) + n) % n] : seg[k]);
       const answer = seg[i];
       if (quiz.used.has(answer)) continue;
-      return { line, answer, prev2: at(i - 2), prev: at(i - 1), next: at(i + 1), next2: at(i + 2) };
+      quiz.used.add(answer);
+      const exclude = new Set([answer, at(i - 1), at(i + 1)]);
+      const wrong = shuffle(stationsOf(line).filter((s) => !exclude.has(s))).slice(0, 3);
+      return {
+        type: 'blank', line, answer, choices: shuffle([answer, ...wrong]),
+        prev2: at(i - 2), prev: at(i - 1), next: at(i + 1), next2: at(i + 2),
+      };
     }
     return null;
   }
 
-  function startQuiz() {
-    Object.assign(quiz, { round: 0, score: 0, used: new Set(), log: [] });
+  // 환승역 퀴즈 문제: 두 노선이 만나는 역 맞히기
+  function makeTransferQuestion() {
+    for (let tries = 0; tries < 100; tries++) {
+      const pair = TRANSFER_PAIRS[rand(TRANSFER_PAIRS.length)];
+      const key = pair.a.id + '-' + pair.b.id;
+      if (quiz.used.has(key) && tries < 60) continue;
+      quiz.used.add(key);
+      const [lineA, lineB] = Math.random() < 0.5 ? [pair.a, pair.b] : [pair.b, pair.a];
+      const answer = pair.shared[rand(pair.shared.length)];
+      const others = pair.shared.filter((s) => s !== answer);
+      const sharedCanon = new Set(pair.shared.map(canon));
+      const pool = [...new Set([...stationsOf(pair.a), ...stationsOf(pair.b)])].filter((s) => !sharedCanon.has(canon(s)));
+      const wrong = shuffle(pool).slice(0, 3);
+      return { type: 'transfer', line: lineA, lineB, answer, others, choices: shuffle([answer, ...wrong]) };
+    }
+    return null;
+  }
+
+  function startQuiz(mode) {
+    Object.assign(quiz, { mode, round: 0, score: 0, used: new Set(), log: [] });
     show('quiz');
     nextQuestion();
   }
 
   function nextQuestion() {
     if (quiz.round >= ROUNDS) return endQuiz();
-    const q = makeQuestion();
+    const q = quiz.mode === 'transfer' ? makeTransferQuestion() : makeBlankQuestion();
     if (!q) return endQuiz();
     quiz.q = q; quiz.round++; quiz.hinted = false; quiz.answered = false;
-    quiz.used.add(q.answer);
 
     const card = $('.question');
     setLineColor($('#quiz'), q.line);
     card.classList.remove('shake');
     renderDots();
-    $('#q-badge').textContent = q.line.id;
-    $('#q-round').textContent = quiz.round;
+    renderHead();
     $('#q-score').textContent = quiz.score;
     $('#q-feedback').textContent = '';
     $('#q-feedback').className = 'feedback';
@@ -144,17 +169,15 @@
     $('#q-hint').disabled = false;
     $('#q-next').classList.add('hidden');
 
-    renderTrack(false);
+    renderBoard(false);
 
     const choices = $('#q-choices');
     const form = $('#q-form');
     choices.innerHTML = '';
-    if (answerMode === 'choice') {
+    if (!usesTyping()) {
       choices.classList.remove('hidden');
       form.classList.add('hidden');
-      const exclude = new Set([q.answer, q.prev, q.next]);
-      const pool = shuffle(stationsOf(q.line).filter((s) => !exclude.has(s)));
-      shuffle([q.answer, ...pool.slice(0, 3)]).forEach((s) => {
+      q.choices.forEach((s) => {
         const b = document.createElement('button');
         b.className = 'choice';
         b.textContent = s;
@@ -171,21 +194,60 @@
     }
   }
 
-  // 역 표지판: ◀ 이전역 | [ 이 역 ] | 다음역 ▶
-  function renderTrack(solved) {
+  // 문제 머리: 노선 배지 + 질문
+  function renderHead() {
     const q = quiz.q;
-    const sign = $('#q-track');
-    sign.innerHTML = `
+    const b1 = $('#q-badge'), b2 = $('#q-badge2');
+    b1.textContent = q.line.id;
+    setLineColor(b1, q.line);
+    const title = $('#q-title');
+    if (q.type === 'transfer') {
+      b2.classList.remove('hidden');
+      b2.textContent = q.lineB.id;
+      setLineColor(b2, q.lineB);
+      title.innerHTML = '<b class="ln-a"></b>과 <b class="ln-b"></b>이<br>만나는 역은?';
+      title.querySelector('.ln-a').textContent = q.line.name;
+      title.querySelector('.ln-b').textContent = q.lineB.name;
+      setLineColor(title.querySelector('.ln-a'), q.line, 'color');
+      setLineColor(title.querySelector('.ln-b'), q.lineB, 'color');
+    } else {
+      b2.classList.add('hidden');
+      title.textContent = `${quiz.round}번째 역 · 빈칸에 들어갈 역은?`;
+    }
+  }
+
+  // 문제 그림
+  function renderBoard(solved) {
+    const q = quiz.q;
+    const board = $('#q-track');
+    if (q.type === 'transfer') {
+      // 두 노선이 교차하는 그림
+      board.className = 'sign cross';
+      setLineColor(board, q.line, '--ca');
+      setLineColor(board, q.lineB, '--cb');
+      board.innerHTML = `
+        <div class="bar a"></div><div class="bar b"></div>
+        <span class="end a1"></span><span class="end a2"></span>
+        <span class="end b1"></span><span class="end b2"></span>
+        <div class="sign-center ${solved ? 'solved' : 'unknown'}"><small>환승역</small><strong></strong></div>`;
+      board.querySelectorAll('.end.a1, .end.a2').forEach((e) => { e.textContent = q.line.id; });
+      board.querySelectorAll('.end.b1, .end.b2').forEach((e) => { e.textContent = q.lineB.id; });
+      board.querySelector('strong').textContent = solved ? q.answer : '?';
+      return;
+    }
+    // 역 표지판: ◀ 이전역 | [ 이 역 ] | 다음역 ▶
+    board.className = 'sign';
+    board.innerHTML = `
       <div class="sign-side left"><small></small><b></b><span class="gap"></span></div>
       <div class="sign-center ${solved ? 'solved' : 'unknown'}"><small></small><strong></strong></div>
       <div class="sign-side right"><small></small><b></b><span class="gap"></span></div>`;
-    const [l, r] = sign.querySelectorAll('.sign-side');
+    const [l, r] = board.querySelectorAll('.sign-side');
     l.querySelector('small').textContent = q.prev2 ? `${q.prev2} ·` : '';
     l.querySelector('b').textContent = `◀ ${q.prev}`;
     r.querySelector('small').textContent = q.next2 ? `· ${q.next2}` : '';
     r.querySelector('b').textContent = `${q.next} ▶`;
-    sign.querySelector('.sign-center small').textContent = q.line.name;
-    sign.querySelector('.sign-center strong').textContent = solved ? q.answer : '?';
+    board.querySelector('.sign-center small').textContent = q.line.name;
+    board.querySelector('.sign-center strong').textContent = solved ? q.answer : '?';
   }
 
   function renderDots() {
@@ -201,12 +263,12 @@
   }
 
   // 정답 효과: 화면 요소 중심에서 색 조각이 튐
-  function burst(el, color) {
+  function burst(el, colorList) {
     const fx = $('#fx');
     const r = el.getBoundingClientRect();
     const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-    const colors = [color, '#ffffff', '#ffd23f', color];
-    for (let i = 0; i < 22; i++) {
+    const colors = [...colorList, '#ffffff', '#ffd23f'];
+    for (let i = 0; i < 24; i++) {
       const s = document.createElement('span');
       s.className = 'spark';
       const a = Math.random() * Math.PI * 2, d = 60 + Math.random() * 90;
@@ -225,24 +287,27 @@
     if (quiz.answered) return;
     const q = quiz.q;
     const ok = isCorrect(given, q.answer);
-    if (answerMode === 'type' && !ok && !given.trim()) return;
+    if (usesTyping() && !ok && !given.trim()) return;
     quiz.answered = true;
     const pts = ok ? (quiz.hinted ? 5 : 10) : 0;
     quiz.score += pts;
-    quiz.log.push({ line: q.line, answer: q.answer, given, ok });
+    quiz.log.push({ q, given, ok });
 
     $('#q-score').textContent = quiz.score;
     $('#q-hint').disabled = true;
     const fb = $('#q-feedback');
     fb.className = 'feedback ' + (ok ? 'good' : 'bad');
-    fb.textContent = ok ? `정답! +${pts}점` : `아쉬워요. 정답은 "${q.answer}"`;
-    renderTrack(true);
+    let text = ok ? `정답! +${pts}점` : `아쉬워요. 정답은 "${q.answer}"`;
+    if (q.type === 'transfer' && q.others.length) text += ` · ${q.others.join(', ')}에서도 만나요`;
+    fb.textContent = text;
+
+    renderBoard(true);
     renderDots();
     const card = $('.question');
-    if (ok) burst($('#q-track .sign-center'), q.line.color);
+    if (ok) burst($('#q-track .sign-center'), q.lineB ? [q.line.color, q.lineB.color] : [q.line.color]);
     else { card.classList.remove('shake'); void card.offsetWidth; card.classList.add('shake'); }
 
-    if (answerMode === 'choice') {
+    if (!usesTyping()) {
       $$('#q-choices .choice').forEach((b) => {
         b.disabled = true;
         if (b.textContent === q.answer) b.classList.add('right');
@@ -253,7 +318,7 @@
       $('#q-input').disabled = true;
     }
     const next = $('#q-next');
-    next.textContent = quiz.round >= ROUNDS ? '결과 보기 →' : '다음 역 →';
+    next.textContent = quiz.round >= ROUNDS ? '결과 보기 →' : '다음 문제 →';
     next.classList.remove('hidden');
     next.focus();
   }
@@ -264,147 +329,39 @@
     quiz.hinted = true;
     $('#q-hint-text').textContent = choseong(quiz.q.answer);
     $('#q-hint').disabled = true;
-    if (answerMode === 'type') $('#q-input').focus();
+    if (usesTyping()) $('#q-input').focus();
   });
-  $('#start-quiz').addEventListener('click', startQuiz);
+  $('#start-quiz').addEventListener('click', () => startQuiz('blank'));
+  $('#start-transfer').addEventListener('click', () => startQuiz('transfer'));
 
   function endQuiz() {
-    const best = store.get('bestQuiz', 0);
+    const key = quiz.mode === 'transfer' ? 'bestTransfer' : 'bestQuiz';
+    const best = store.get(key, 0);
     const isBest = quiz.score > best;
-    if (isBest) store.set('bestQuiz', quiz.score);
+    if (isBest) store.set(key, quiz.score);
     const correct = quiz.log.filter((l) => l.ok).length;
-    $('#r-title').textContent = isBest ? '🎉 최고 기록!' : '결과';
+    $('#r-title').textContent = isBest ? '🎉 최고 기록!' : (quiz.mode === 'transfer' ? '환승역 퀴즈 결과' : '빈칸 퀴즈 결과');
     $('#r-score').textContent = quiz.score + '점';
     $('#r-detail').textContent = `${quiz.log.length}문제 중 ${correct}개 정답`;
     const review = $('#r-review');
     review.innerHTML = '';
-    quiz.log.forEach((l) => {
+    quiz.log.forEach(({ q, given, ok }) => {
       const row = document.createElement('div');
-      row.className = 'review-item ' + (l.ok ? 'ok' : 'no');
-      row.innerHTML = `<span class="mark">${l.ok ? '○' : '✕'}</span><span class="line-badge mini">${l.line.id}</span><b></b><span class="muted"></span>`;
-      setLineColor(row.querySelector('.line-badge'), l.line);
-      row.querySelector('b').textContent = l.answer;
-      if (!l.ok) row.querySelector('.muted').textContent = l.given ? `(내 답: ${l.given})` : '';
+      row.className = 'review-item ' + (ok ? 'ok' : 'no');
+      row.innerHTML = `<span class="mark">${ok ? '○' : '✕'}</span><span class="badges"></span><b></b><span class="muted"></span>`;
+      [q.line, q.lineB].filter(Boolean).forEach((ln) => {
+        const s = document.createElement('span');
+        s.className = 'line-badge mini';
+        s.textContent = ln.id;
+        setLineColor(s, ln);
+        row.querySelector('.badges').appendChild(s);
+      });
+      row.querySelector('b').textContent = q.answer;
+      if (!ok) row.querySelector('.muted').textContent = given ? `(내 답: ${given})` : '';
       review.appendChild(row);
     });
-    $('#r-again').onclick = startQuiz;
+    $('#r-again').onclick = () => startQuiz(quiz.mode);
     show('result');
-  }
-
-  // ---------- 노선 정복 ----------
-  const SEC_PER_STATION = 8;
-  const con = { line: null, found: new Set(), stations: [], left: 0, timer: null, over: false };
-
-  function stopTimer() { clearInterval(con.timer); con.timer = null; }
-
-  function startConquer(line) {
-    stopTimer();
-    con.line = line;
-    con.stations = stationsOf(line);
-    con.found = new Set();
-    con.over = false;
-    con.left = Math.max(120, con.stations.length * SEC_PER_STATION);
-
-    const sec = $('#conquer');
-    setLineColor(sec, line);
-    $('#c-badge').textContent = line.id;
-    $('#c-total').textContent = con.stations.length;
-    $('#c-msg').textContent = '';
-    $('#c-msg').className = 'feedback';
-    $('#c-giveup').textContent = '포기';
-
-    const board = $('#c-board');
-    board.innerHTML = '';
-    line.segments.forEach((_, i) => {
-      const row = document.createElement('div');
-      row.className = 'board-seg';
-      segOf(line, i).forEach((name) => {
-        const cell = document.createElement('div');
-        cell.className = 'cell';
-        cell.dataset.name = name;
-        cell.textContent = name;
-        row.appendChild(cell);
-      });
-      board.appendChild(row);
-    });
-
-    const input = $('#c-input');
-    input.value = '';
-    input.disabled = false;
-    updateConquer();
-    show('conquer');
-    input.focus();
-    con.timer = setInterval(() => {
-      con.left--;
-      updateConquer();
-      if (con.left <= 0) endConquer('시간 종료!');
-    }, 1000);
-  }
-
-  function updateConquer() {
-    const m = Math.floor(con.left / 60), s = con.left % 60;
-    const t = $('#c-timer');
-    t.textContent = `${m}:${String(s).padStart(2, '0')}`;
-    t.classList.toggle('warn', con.left <= 15);
-    $('#c-found').textContent = con.found.size;
-    $('#c-bar').style.width = (con.found.size / con.stations.length) * 100 + '%';
-  }
-
-  function matchStation(text) {
-    const n = norm(text);
-    if (!n) return null;
-    return con.stations.find((s) => acceptedNames(s).includes(n)) || null;
-  }
-
-  // 다른 미발견 역 이름의 앞부분이면(예: 잠실 → 잠실나루) 자동 확정하지 않음
-  function isPrefixOfOther(text, station) {
-    const n = norm(text);
-    return con.stations.some((s) => s !== station && !con.found.has(s) && acceptedNames(s).some((a) => a.length > n.length && a.startsWith(n)));
-  }
-
-  function tryInput(force) {
-    if (con.over) return;
-    const input = $('#c-input');
-    const st = matchStation(input.value);
-    const msg = $('#c-msg');
-    if (st && !con.found.has(st)) {
-      if (!force && isPrefixOfOther(input.value, st)) return;
-      con.found.add(st);
-      let firstCell = null;
-      $$(`#c-board .cell`).forEach((c) => { if (c.dataset.name === st) { c.classList.add('found'); firstCell = firstCell || c; } });
-      if (firstCell) burst(firstCell, con.line.color);
-      input.value = '';
-      msg.className = 'feedback good';
-      msg.textContent = `${st} ✓`;
-      updateConquer();
-      if (con.found.size === con.stations.length) endConquer('🎉 전부 맞혔어요!');
-    } else if (force) {
-      msg.className = 'feedback bad';
-      msg.textContent = st ? `${st}은(는) 이미 찾았어요` : `"${input.value.trim()}"은(는) ${con.line.name}에 없어요`;
-      if (!input.value.trim()) msg.textContent = '';
-      input.select();
-    }
-  }
-
-  $('#c-input').addEventListener('input', (e) => { if (!e.isComposing) tryInput(false); });
-  $('#c-form').addEventListener('submit', (e) => { e.preventDefault(); tryInput(true); });
-  $('#c-giveup').addEventListener('click', () => {
-    if (con.over) startConquer(con.line); else endConquer('포기했어요.');
-  });
-
-  function endConquer(reason) {
-    stopTimer();
-    con.over = true;
-    $$('#c-board .cell').forEach((c) => { if (!con.found.has(c.dataset.name)) c.classList.add('missed'); });
-    const input = $('#c-input');
-    input.disabled = true;
-    const key = 'bestConquer:' + con.line.id;
-    const best = store.get(key, 0);
-    if (con.found.size > best) store.set(key, con.found.size);
-    const msg = $('#c-msg');
-    msg.className = 'feedback';
-    msg.textContent = `${reason} ${con.stations.length}개 중 ${con.found.size}개 성공` + (con.found.size > best ? ' · 최고 기록!' : '');
-    $('#c-giveup').textContent = '다시 하기';
   }
 
   renderHome();
