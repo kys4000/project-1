@@ -79,6 +79,7 @@
       const b = document.createElement('button');
       b.className = 'line-card';
       setLineColor(b, line);
+      b.style.setProperty('--p', best / total);
       b.innerHTML = `<span class="line-badge">${line.id}</span>
         <span><b>${line.name}</b><small>${total}개 역 · <span class="best-mini">${best ? `최고 ${best}/${total}` : '도전 전'}</span></small></span>`;
       b.addEventListener('click', () => startConquer(line));
@@ -131,7 +132,9 @@
     quiz.used.add(q.answer);
 
     const card = $('.question');
-    setLineColor(card, q.line);
+    setLineColor($('#quiz'), q.line);
+    card.classList.remove('shake');
+    renderDots();
     $('#q-badge').textContent = q.line.id;
     $('#q-round').textContent = quiz.round;
     $('#q-score').textContent = quiz.score;
@@ -168,25 +171,54 @@
     }
   }
 
+  // 역 표지판: ◀ 이전역 | [ 이 역 ] | 다음역 ▶
   function renderTrack(solved) {
     const q = quiz.q;
-    const stops = [
-      { name: q.prev2, faded: true },
-      { name: q.prev },
-      { name: solved ? q.answer : '?', target: true },
-      { name: q.next },
-      { name: q.next2, faded: true },
-    ].filter((s) => s.name);
-    const track = $('#q-track');
-    track.innerHTML = '';
-    stops.forEach((s, idx) => {
-      const el = document.createElement('div');
-      el.className = 'stop' + (s.faded ? ' faded' : '') + (s.target ? ' target' : '') + (s.target && solved ? ' solved' : '')
-        + (idx === 0 ? ' first' : '') + (idx === stops.length - 1 ? ' last' : '');
-      el.innerHTML = '<span class="dot"></span><span class="name"></span>';
-      el.querySelector('.name').textContent = s.name;
-      track.appendChild(el);
-    });
+    const sign = $('#q-track');
+    sign.innerHTML = `
+      <div class="sign-side left"><small></small><b></b><span class="gap"></span></div>
+      <div class="sign-center ${solved ? 'solved' : 'unknown'}"><small></small><strong></strong></div>
+      <div class="sign-side right"><small></small><b></b><span class="gap"></span></div>`;
+    const [l, r] = sign.querySelectorAll('.sign-side');
+    l.querySelector('small').textContent = q.prev2 ? `${q.prev2} ·` : '';
+    l.querySelector('b').textContent = `◀ ${q.prev}`;
+    r.querySelector('small').textContent = q.next2 ? `· ${q.next2}` : '';
+    r.querySelector('b').textContent = `${q.next} ▶`;
+    sign.querySelector('.sign-center small').textContent = q.line.name;
+    sign.querySelector('.sign-center strong').textContent = solved ? q.answer : '?';
+  }
+
+  function renderDots() {
+    const dots = $('#q-dots');
+    dots.innerHTML = '';
+    for (let i = 0; i < ROUNDS; i++) {
+      const d = document.createElement('i');
+      const log = quiz.log[i];
+      if (log) d.className = log.ok ? 'ok' : 'no';
+      else if (i === quiz.round - 1) d.className = 'now';
+      dots.appendChild(d);
+    }
+  }
+
+  // 정답 효과: 화면 요소 중심에서 색 조각이 튐
+  function burst(el, color) {
+    const fx = $('#fx');
+    const r = el.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const colors = [color, '#ffffff', '#ffd23f', color];
+    for (let i = 0; i < 22; i++) {
+      const s = document.createElement('span');
+      s.className = 'spark';
+      const a = Math.random() * Math.PI * 2, d = 60 + Math.random() * 90;
+      s.style.left = cx + 'px';
+      s.style.top = cy + 'px';
+      s.style.background = colors[i % colors.length];
+      s.style.setProperty('--dx', Math.cos(a) * d + 'px');
+      s.style.setProperty('--dy', Math.sin(a) * d + 'px');
+      s.style.setProperty('--r', rand(360) + 'deg');
+      fx.appendChild(s);
+      setTimeout(() => s.remove(), 1000);
+    }
   }
 
   function answer(given, btn) {
@@ -205,18 +237,23 @@
     fb.className = 'feedback ' + (ok ? 'good' : 'bad');
     fb.textContent = ok ? `정답! +${pts}점` : `아쉬워요. 정답은 "${q.answer}"`;
     renderTrack(true);
+    renderDots();
+    const card = $('.question');
+    if (ok) burst($('#q-track .sign-center'), q.line.color);
+    else { card.classList.remove('shake'); void card.offsetWidth; card.classList.add('shake'); }
 
     if (answerMode === 'choice') {
       $$('#q-choices .choice').forEach((b) => {
         b.disabled = true;
         if (b.textContent === q.answer) b.classList.add('right');
+        else if (b !== btn) b.classList.add('dim');
       });
       if (!ok && btn) btn.classList.add('wrong');
     } else {
       $('#q-input').disabled = true;
     }
     const next = $('#q-next');
-    next.textContent = quiz.round >= ROUNDS ? '결과 보기 →' : '다음 문제 →';
+    next.textContent = quiz.round >= ROUNDS ? '결과 보기 →' : '다음 역 →';
     next.classList.remove('hidden');
     next.focus();
   }
@@ -333,7 +370,9 @@
     if (st && !con.found.has(st)) {
       if (!force && isPrefixOfOther(input.value, st)) return;
       con.found.add(st);
-      $$(`#c-board .cell`).forEach((c) => { if (c.dataset.name === st) c.classList.add('found'); });
+      let firstCell = null;
+      $$(`#c-board .cell`).forEach((c) => { if (c.dataset.name === st) { c.classList.add('found'); firstCell = firstCell || c; } });
+      if (firstCell) burst(firstCell, con.line.color);
       input.value = '';
       msg.className = 'feedback good';
       msg.textContent = `${st} ✓`;
