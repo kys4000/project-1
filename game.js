@@ -367,7 +367,15 @@
   renderHome();
 
   // 앱 설치·오프라인 지원 (웹 서버로 열었을 때만 동작)
+  // 새 버전이 설치되면 한 번 자동 새로고침해서 예전 파일과 섞이지 않게 함
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (hadController && !reloaded) { reloaded = true; location.reload(); }
+    });
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
+      .then((reg) => reg.update())
+      .catch(() => {});
   }
 })();

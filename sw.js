@@ -1,11 +1,14 @@
-// 오프라인 지원: 게임 파일을 캐시해 두고, 네트워크가 되면 최신 파일로 갱신
-const CACHE = 'subway-quiz-v3';
+// 오프라인 지원
+// - 항상 네트워크에서 최신 파일을 먼저 받음 (브라우저 HTTP 캐시도 건너뜀)
+// - 인터넷이 안 될 때만 저장해 둔 파일 사용
+// 게임을 고칠 때마다 index.html의 ?v= 숫자와 아래 CACHE 이름을 함께 올려 주세요.
+const CACHE = 'subway-quiz-v4';
 const FILES = [
   './',
   './index.html',
-  './style.css',
-  './game.js',
-  './data.js',
+  './style.css?v=4',
+  './game.js?v=4',
+  './data.js?v=4',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -13,7 +16,11 @@ const FILES = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));
+  e.waitUntil(
+    caches.open(CACHE)
+      .then((c) => c.addAll(FILES.map((f) => new Request(f, { cache: 'reload' }))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', (e) => {
@@ -24,18 +31,21 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-// 네트워크 우선, 실패하면 캐시 (폰트 등 외부 파일도 한 번 받으면 캐시)
 self.addEventListener('fetch', (e) => {
-  if (e.request.method !== 'GET') return;
+  const req = e.request;
+  if (req.method !== 'GET') return;
+  const sameOrigin = new URL(req.url).origin === self.location.origin;
+  // 같은 사이트 파일은 브라우저 캐시를 건너뛰고 서버에 확인
+  const fresh = sameOrigin ? fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' }) : fetch(req);
   e.respondWith(
-    fetch(e.request)
+    fresh
       .then((res) => {
         if (res.ok || res.type === 'opaque') {
           const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(e.request, copy));
+          caches.open(CACHE).then((c) => c.put(req, copy));
         }
         return res;
       })
-      .catch(() => caches.match(e.request, { ignoreSearch: true }))
+      .catch(() => caches.match(req).then((hit) => hit || caches.match('./index.html')))
   );
 });
