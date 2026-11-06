@@ -408,4 +408,9 @@
   }
 
   renderHome();
+
+  // 앱 설치·오프라인 지원 (웹 서버로 열었을 때만 동작)
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
 })();

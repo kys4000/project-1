@@ -328,6 +328,48 @@ button { -webkit-tap-highlight-color: transparent; }
   .dots i { width: 6px; height: 6px; }
 }
 
+/* ---------- 모바일 ---------- */
+html { -webkit-text-size-adjust: 100%; }
+button, .choice, .line-chip, .line-card { touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+.app {
+  padding-top: max(28px, calc(env(safe-area-inset-top) + 16px));
+  padding-bottom: max(56px, calc(env(safe-area-inset-bottom) + 32px));
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+}
+
+/* 노선 정복: 스크롤해도 입력창이 위에 고정 */
+.c-sticky {
+  position: sticky; top: 0; z-index: 3;
+  display: flex; flex-direction: column; gap: 12px;
+  margin: -22px -22px 0; padding: 22px 22px 6px;
+  padding-top: max(22px, calc(env(safe-area-inset-top) + 10px));
+  background: var(--surface-solid);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
+/* 터치 기기에서는 hover 효과가 눌린 채 남지 않도록 */
+@media (hover: none) {
+  .btn:hover, .line-card:hover { box-shadow: none; }
+  .line-chip:hover, .line-card:hover, .choice:hover:not(:disabled) { transform: none; }
+  .choice:hover:not(:disabled) { border-color: var(--border); }
+  .line-card:hover { border-color: var(--border); }
+}
+
+@media (max-width: 440px) {
+  .hero h1 { margin-top: 14px; }
+  .lead { font-size: 15px; }
+  .line-picker { gap: 6px; justify-content: space-between; }
+  .line-chip { width: 36px; height: 36px; font-size: 15px; border-width: 2.5px; }
+  .line-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .line-card { padding: 10px; gap: 8px; }
+  .line-card .line-badge { width: 32px; height: 32px; font-size: 14px; }
+  .choice { min-height: 58px; }
+  .c-sticky { margin: -18px -18px 0; padding-left: 18px; padding-right: 18px; }
+  .topbar .btn.small { padding: 7px 10px; }
+  .row .btn { min-width: 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }

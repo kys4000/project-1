@@ -1,0 +1,16 @@
+{
+  "name": "서울 지하철 역이름 퀴즈",
+  "short_name": "역이름 퀴즈",
+  "description": "앞뒤 역을 보고 빈칸 역을 맞히거나, 한 노선을 통째로 정복하는 퀴즈 게임",
+  "lang": "ko",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b1020",
+  "theme_color": "#0b1020",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

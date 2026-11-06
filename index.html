@@ -2,8 +2,16 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0b1020">
+  <meta name="description" content="앞뒤 역을 보고 빈칸 역을 맞히거나, 한 노선을 통째로 정복하는 서울 지하철 퀴즈">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="역이름 퀴즈">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <title>지하철 역이름 퀴즈</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
   <link rel="stylesheet" href="style.css">
@@ -105,6 +113,7 @@
         <div class="pill timer" id="c-timer">0:00</div>
       </div>
       <div class="card">
+        <div class="c-sticky">
         <div class="conquer-head">
           <div class="line-badge" id="c-badge">2</div>
           <form id="c-form" class="type-form" autocomplete="off">
@@ -114,6 +123,7 @@
         </div>
         <div class="progress"><div id="c-bar"></div></div>
         <div id="c-msg" class="feedback"></div>
+        </div>
         <div id="c-board" class="board"></div>
       </div>
     </section>
