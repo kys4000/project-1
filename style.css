@@ -354,3 +354,33 @@ button, .choice, .line-chip { touch-action: manipulation; -webkit-user-select: n
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ---------- 두 글자 배지 (경의) ---------- */
+.line-badge.long, .line-chip.long { font-size: 12px; letter-spacing: -0.06em; }
+.line-badge.mini.long { font-size: 9px; }
+.hero-badges span.long { font-size: 9.5px; letter-spacing: -0.06em; }
+.cross .end.long { font-size: 11px; letter-spacing: -0.06em; }
+
+/* ---------- 전동차 그림 ---------- */
+.train-wrap { display: flex; justify-content: center; overflow: hidden; margin: 0 -6px; }
+.train-wrap .train { width: 100%; max-width: 340px; animation: arrive 1s cubic-bezier(.15,.75,.25,1) both; }
+.train-wrap .train svg { display: block; width: 100%; height: auto; }
+.train-wrap.two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+@keyframes arrive {
+  0% { transform: translateX(-115%); }
+  80% { transform: translateX(2%); }
+  100% { transform: translateX(0); }
+}
+.question.solved-ok .train-wrap .train { animation: depart .9s .5s cubic-bezier(.5,0,.8,.4) forwards; }
+@keyframes depart { to { transform: translateX(130%); } }
+
+.hero-train {
+  width: 100%; margin: 18px 0 0; padding: 0; border: 0; background: none; cursor: pointer;
+}
+.hero-train .train { max-width: 380px; }
+.hero-train-name { margin: 6px 0 0; text-align: center; font-weight: 800; font-size: 14px; }
+.hero-train-name .muted { font-weight: 500; }
+
+@media (prefers-reduced-motion: reduce) {
+  .train-wrap .train { animation: none !important; }
+}

@@ -2,13 +2,13 @@
 // - 항상 네트워크에서 최신 파일을 먼저 받음 (브라우저 HTTP 캐시도 건너뜀)
 // - 인터넷이 안 될 때만 저장해 둔 파일 사용
 // 게임을 고칠 때마다 index.html의 ?v= 숫자와 아래 CACHE 이름을 함께 올려 주세요.
-const CACHE = 'subway-quiz-v4';
+const CACHE = 'subway-quiz-v5';
 const FILES = [
   './',
   './index.html',
-  './style.css?v=4',
-  './game.js?v=4',
-  './data.js?v=4',
+  './style.css?v=5',
+  './game.js?v=5',
+  './data.js?v=5',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',

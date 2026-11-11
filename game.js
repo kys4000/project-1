@@ -35,6 +35,69 @@
   const stationsOf = (line) => [...new Set(line.segments.flat())];
   function setLineColor(el, line, prop = '--c') { el.style.setProperty(prop, line.color); }
 
+  // 노선 배지: 짧은 글자(1, 2, 경의, A)와 색
+  const badgeText = (line) => line.badge || line.id;
+  function applyBadge(el, line) {
+    const t = badgeText(line);
+    el.textContent = t;
+    el.classList.toggle('long', t.length > 1);
+    setLineColor(el, line);
+    return el;
+  }
+
+  // 받침 있으면 '과/이', 없으면 '와/가' (예: 2호선과, GTX-A와)
+  function hasBatchim(word) {
+    const ch = word.trim().slice(-1);
+    const c = ch.charCodeAt(0);
+    if (c >= 0xac00 && c <= 0xd7a3) return (c - 0xac00) % 28 !== 0;
+    if (/[0-9]/.test(ch)) return '013678'.includes(ch);
+    return /[lmnr]/i.test(ch);
+  }
+
+  // ---------- 전동차 그림 (노선 색으로 칠한 SVG) ----------
+  let svgSeq = 0;
+  function trainSVG(line) {
+    const c = line.color;
+    const id = 'tb' + (++svgSeq);
+    const express = line.train === 'express';
+    const label = badgeText(line);
+    const body = express
+      ? 'M14 24 Q14 14 24 14 H292 Q320 14 336 40 L347 62 Q350 72 339 72 H24 Q14 72 14 62 Z'
+      : 'M14 24 Q14 14 24 14 H328 Q346 14 346 32 V62 Q346 72 336 72 H24 Q14 72 14 62 Z';
+    const nose = express
+      ? `<path d="M284 14 H292 Q320 14 336 40 L347 62 Q350 72 339 72 H284 Z" fill="${c}"/>
+         <path d="M296 21 Q314 21 326 40 L330 47 H296 Z" fill="#26304a"/>
+         <circle cx="338" cy="62" r="3" fill="#ffe58a"/>`
+      : `<path d="M304 14 H328 Q346 14 346 32 V62 Q346 72 336 72 H304 Z" fill="${c}"/>
+         <rect x="318" y="22" width="20" height="22" rx="4" fill="#26304a"/>
+         <circle cx="339" cy="62" r="3" fill="#ffe58a"/>`;
+    const windows = [56, 130, 204].map((x) => `<rect x="${x}" y="22" width="40" height="20" rx="4" fill="#26304a"/>
+      <rect x="${x + 4}" y="25" width="10" height="4" rx="2" fill="#ffffff" opacity=".25"/>`).join('');
+    const doors = [102, 176, 250].map((x) => `<rect x="${x}" y="19" width="22" height="50" rx="3" fill="#dde2ea" stroke="#b7becb"/>
+      <rect x="${x + 4}" y="24" width="14" height="16" rx="3" fill="#26304a"/>`).join('');
+    const wheels = [52, 78, 262, 288].map((x) => `<circle cx="${x}" cy="80" r="8" fill="#3b4254"/><circle cx="${x}" cy="80" r="3" fill="#9aa1b2"/>`).join('');
+    return `<svg viewBox="0 0 360 96" role="img" aria-label="${line.name} 전동차">
+      <defs><clipPath id="${id}"><path d="${body}"/></clipPath></defs>
+      <rect x="0" y="88" width="360" height="4" rx="2" fill="#8b93a6" opacity=".55"/>
+      ${wheels}
+      <path d="${body}" fill="#f3f5f9" stroke="#c3c9d4" stroke-width="1.5"/>
+      <g clip-path="url(#${id})">
+        <rect x="0" y="50" width="360" height="8" fill="${c}"/>
+        <rect x="0" y="14" width="360" height="4" fill="${c}" opacity=".9"/>
+        ${nose}
+      </g>
+      ${windows}${doors}
+      <circle cx="34" cy="34" r="12" fill="${c}" stroke="#fff" stroke-width="2.5"/>
+      <text x="34" y="34" dy=".36em" text-anchor="middle" font-size="${label.length > 1 ? 9 : 13}" font-weight="800" fill="#fff" font-family="Pretendard, 'Malgun Gothic', sans-serif">${label}</text>
+    </svg>`;
+  }
+
+  // 열차가 들어오는 그림 (여러 노선이면 여러 대)
+  function renderTrains(el, lines) {
+    el.classList.toggle('two', lines.length > 1);
+    el.innerHTML = lines.map((l, i) => `<div class="train" style="animation-delay:${i * 0.15}s">${trainSVG(l)}</div>`).join('');
+  }
+
   // ---------- 환승역 목록 만들기 ----------
   // 노선마다 표기가 다른 같은 역은 하나로 묶음
   const SAME_STATION = { '총신대입구(이수)': '이수' };
@@ -44,8 +107,9 @@
   for (let i = 0; i < LINES.length; i++) {
     for (let j = i + 1; j < LINES.length; j++) {
       const a = LINES[i], b = LINES[j];
+      const blocked = new Set([...(a.noTransfer || []), ...(b.noTransfer || [])]);
       const bSet = new Set(stationsOf(b).map(canon));
-      const shared = stationsOf(a).filter((s) => bSet.has(canon(s)));
+      const shared = stationsOf(a).filter((s) => bSet.has(canon(s)) && !blocked.has(s));
       if (shared.length) TRANSFER_PAIRS.push({ a, b, shared });
     }
   }
@@ -55,7 +119,7 @@
     $$('.screen').forEach((s) => s.classList.toggle('hidden', s.id !== id));
     window.scrollTo(0, 0);
   }
-  $$('[data-home]').forEach((b) => b.addEventListener('click', () => { renderHome(); show('home'); }));
+  $$('[data-home]').forEach((b) => b.addEventListener('click', () => { renderHome(); heroTrain(); show('home'); }));
 
   // ---------- 홈 ----------
   let quizLines = new Set(store.get('quizLines', LINES.map((l) => l.id)));
@@ -67,9 +131,8 @@
     LINES.forEach((line) => {
       const b = document.createElement('button');
       b.className = 'line-chip' + (quizLines.has(line.id) ? '' : ' off');
-      b.textContent = line.id;
+      applyBadge(b, line);
       b.title = line.name;
-      setLineColor(b, line);
       b.addEventListener('click', () => {
         if (quizLines.has(line.id)) { if (quizLines.size > 1) quizLines.delete(line.id); }
         else quizLines.add(line.id);
@@ -86,6 +149,16 @@
     const bestTransfer = store.get('bestTransfer', null);
     $('#best-transfer').textContent = bestTransfer != null ? `최고 점수 ${bestTransfer}점` : '';
   }
+
+  // 첫 화면 열차: 누를 때마다 다른 노선 열차가 들어옴
+  let heroIdx = rand(LINES.length);
+  function heroTrain() {
+    const line = LINES[heroIdx];
+    renderTrains($('#hero-train'), [line]);
+    $('#hero-train-name').textContent = `${line.name} 열차가 들어옵니다`;
+    setLineColor($('#hero-train-name'), line, 'color');
+  }
+  $('#hero-train').addEventListener('click', () => { heroIdx = (heroIdx + 1) % LINES.length; heroTrain(); });
 
   $$('.seg-btn').forEach((b) => b.addEventListener('click', () => {
     answerMode = b.dataset.answer;
@@ -159,7 +232,7 @@
 
     const card = $('.question');
     setLineColor($('#quiz'), q.line);
-    card.classList.remove('shake');
+    card.classList.remove('shake', 'solved-ok');
     renderDots();
     renderHead();
     $('#q-score').textContent = quiz.score;
@@ -198,14 +271,15 @@
   function renderHead() {
     const q = quiz.q;
     const b1 = $('#q-badge'), b2 = $('#q-badge2');
-    b1.textContent = q.line.id;
-    setLineColor(b1, q.line);
+    applyBadge(b1, q.line);
     const title = $('#q-title');
+    renderTrains($('#q-train'), q.type === 'transfer' ? [q.line, q.lineB] : [q.line]);
     if (q.type === 'transfer') {
       b2.classList.remove('hidden');
-      b2.textContent = q.lineB.id;
-      setLineColor(b2, q.lineB);
-      title.innerHTML = '<b class="ln-a"></b>과 <b class="ln-b"></b>이<br>만나는 역은?';
+      applyBadge(b2, q.lineB);
+      const pA = hasBatchim(q.line.name) ? '과' : '와';
+      const pB = hasBatchim(q.lineB.name) ? '이' : '가';
+      title.innerHTML = `<b class="ln-a"></b>${pA} <b class="ln-b"></b>${pB}<br>만나는 역은?`;
       title.querySelector('.ln-a').textContent = q.line.name;
       title.querySelector('.ln-b').textContent = q.lineB.name;
       setLineColor(title.querySelector('.ln-a'), q.line, 'color');
@@ -230,8 +304,8 @@
         <span class="end a1"></span><span class="end a2"></span>
         <span class="end b1"></span><span class="end b2"></span>
         <div class="sign-center ${solved ? 'solved' : 'unknown'}"><small>환승역</small><strong></strong></div>`;
-      board.querySelectorAll('.end.a1, .end.a2').forEach((e) => { e.textContent = q.line.id; });
-      board.querySelectorAll('.end.b1, .end.b2').forEach((e) => { e.textContent = q.lineB.id; });
+      board.querySelectorAll('.end.a1, .end.a2').forEach((e) => { e.textContent = badgeText(q.line); e.classList.toggle('long', badgeText(q.line).length > 1); });
+      board.querySelectorAll('.end.b1, .end.b2').forEach((e) => { e.textContent = badgeText(q.lineB); e.classList.toggle('long', badgeText(q.lineB).length > 1); });
       board.querySelector('strong').textContent = solved ? q.answer : '?';
       return;
     }
@@ -304,6 +378,7 @@
     renderBoard(true);
     renderDots();
     const card = $('.question');
+    if (ok) card.classList.add('solved-ok');
     if (ok) burst($('#q-track .sign-center'), q.lineB ? [q.line.color, q.lineB.color] : [q.line.color]);
     else { card.classList.remove('shake'); void card.offsetWidth; card.classList.add('shake'); }
 
@@ -352,8 +427,7 @@
       [q.line, q.lineB].filter(Boolean).forEach((ln) => {
         const s = document.createElement('span');
         s.className = 'line-badge mini';
-        s.textContent = ln.id;
-        setLineColor(s, ln);
+        applyBadge(s, ln);
         row.querySelector('.badges').appendChild(s);
       });
       row.querySelector('b').textContent = q.answer;
@@ -365,6 +439,7 @@
   }
 
   renderHome();
+  heroTrain();
 
   // 앱 설치·오프라인 지원 (웹 서버로 열었을 때만 동작)
   // 새 버전이 설치되면 한 번 자동 새로고침해서 예전 파일과 섞이지 않게 함

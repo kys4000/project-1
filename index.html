@@ -14,7 +14,7 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <title>지하철 역이름 퀴즈</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-  <link rel="stylesheet" href="style.css?v=4">
+  <link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
   <div class="bg-lines" aria-hidden="true">
@@ -34,10 +34,12 @@
     <section id="home" class="screen">
       <header class="hero">
         <div class="hero-badges" aria-hidden="true">
-          <span style="--c:#0052A4">1</span><span style="--c:#00A84D">2</span><span style="--c:#EF7C1C">3</span><span style="--c:#00A5DE">4</span><span style="--c:#996CAC">5</span><span style="--c:#CD7C2F">6</span><span style="--c:#747F00">7</span><span style="--c:#E6186C">8</span><span style="--c:#BDB092">9</span>
+          <span style="--c:#0052A4">1</span><span style="--c:#00A84D">2</span><span style="--c:#EF7C1C">3</span><span style="--c:#00A5DE">4</span><span style="--c:#996CAC">5</span><span style="--c:#CD7C2F">6</span><span style="--c:#747F00">7</span><span style="--c:#E6186C">8</span><span style="--c:#BDB092">9</span><span class="long" style="--c:#77C4A3">경의</span><span style="--c:#9A6292">A</span>
         </div>
         <h1>서울 지하철<br><em>역이름 퀴즈</em></h1>
         <p class="lead">앞뒤 역을 보고 빈칸을 채우고,<br>두 노선이 만나는 환승역을 찾아보세요.</p>
+        <button id="hero-train" class="train-wrap hero-train" aria-label="다른 노선 열차 보기"></button>
+        <p class="hero-train-name"><span id="hero-train-name"></span> <span class="muted">· 열차를 눌러 보세요</span></p>
       </header>
 
       <div class="card mode">
@@ -82,7 +84,7 @@
         <p class="best" id="best-transfer"></p>
       </div>
 
-      <footer class="foot">역 데이터는 1~9호선 주요 구간 기준입니다.</footer>
+      <footer class="foot">역 데이터는 1~9호선, 경의중앙선, GTX-A 주요 구간 기준입니다.</footer>
     </section>
 
     <!-- 빈칸 퀴즈 -->
@@ -101,6 +103,7 @@
           </div>
           <p class="q-title" id="q-title"></p>
         </div>
+        <div class="train-wrap" id="q-train" aria-hidden="true"></div>
         <div class="sign" id="q-track"></div>
         <div id="q-choices" class="choices"></div>
         <form id="q-form" class="type-form hidden" autocomplete="off">
@@ -138,7 +141,7 @@
 
   <div id="fx" aria-hidden="true"></div>
 
-  <script src="data.js?v=4"></script>
-  <script src="game.js?v=4"></script>
+  <script src="data.js?v=5"></script>
+  <script src="game.js?v=5"></script>
 </body>
 </html>
